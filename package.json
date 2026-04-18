@@ -1,0 +1,22 @@
+{
+  "name": "creditmindai-monorepo",
+  "private": true,
+  "version": "1.0.0",
+  "workspaces": [
+    "sme-creditmind-ai"
+  ],
+  "scripts": {
+    "dev": "npx --yes concurrently \"cd sme-creditmind-ai && npx next dev -H 127.0.0.1 -p 3000\" \"bash sme-creditmind-ai-backend/run-backend.sh\"",
+    "dev:frontend": "cd sme-creditmind-ai && npx next dev -H 127.0.0.1 -p 3000",
+    "dev:backend": "bash sme-creditmind-ai-backend/run-backend.sh",
+    "setup:backend": "cd sme-creditmind-ai-backend && python3 -m venv .venv && .venv/bin/pip install --upgrade pip && .venv/bin/pip install -r requirements.txt",
+    "build": "cd sme-creditmind-ai && npx next build",
+    "start": "npx --yes concurrently \"cd sme-creditmind-ai && npx next start -H 127.0.0.1 -p 3000\" \"bash sme-creditmind-ai-backend/run-backend.sh\""
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
