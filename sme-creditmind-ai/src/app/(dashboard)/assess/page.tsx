@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import Link from "next/link";
+import { Suspense, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import {
   Upload,
   FileSpreadsheet,
@@ -9,39 +9,17 @@ import {
   ArrowRight,
   CheckCircle2,
   Loader2,
-  Camera,
-  Send,
   FileText,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button, buttonVariants } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Input } from "@/components/ui/input";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import { ScoreGauge } from "@/components/charts/ScoreGauge";
 import { GradeBadge, RecommendationBadge } from "@/components/shared/RiskBadge";
 import { formatVND } from "@/lib/format";
-import {
-  apiFetch,
-  apiUploadJson,
-  API_POS_ASSESSMENT_TIMEOUT_MS,
-  isApiError,
-} from "@/lib/api";
-import {
-  loadPosCapturesFromStorage,
-  getCaptureFileName,
-  type PosCaptureRecord,
-} from "@/lib/pos-captures";
-import type { Merchant } from "@/types/merchant";
+import { apiUploadJson, isApiError } from "@/lib/api";
 
 const posProviders = [
   { id: "vnpay", name: "VNPay", connected: true },
@@ -57,40 +35,6 @@ const demoScenarios = [
 ];
 
 type Step = "connect" | "processing" | "result";
-
-type PosAnalysisFactor = {
-  name: string;
-  impact: "positive" | "negative" | "neutral";
-  weight: number;
-  description: string;
-  dataPoint: string;
-  category: "revenue" | "volume" | "customers" | "consistency" | "digital" | "seasonal" | "growth";
-};
-
-type PosAnalysisResult = {
-  captureId: string;
-  fileName: string;
-  score: number;
-  grade: "A" | "B" | "C" | "D" | "E";
-  riskLevel: "VERY_LOW" | "LOW" | "MEDIUM" | "HIGH" | "VERY_HIGH";
-  recommendation: "APPROVE" | "REVIEW" | "DECLINE";
-  confidence: number;
-  summary: string;
-  factors: PosAnalysisFactor[];
-  assessedAt: string;
-};
-
-type MerchantListResponse = {
-  merchants: Merchant[];
-  total: number;
-};
-
-type SavePosAssessmentResponse = {
-  creditScoreId: string;
-  merchantId: string;
-  fileName: string;
-  message: string;
-};
 
 type FinancialPipelineCredit = {
   credit_score?: string | number;
@@ -121,21 +65,13 @@ function normalizePipelineRecommendation(raw: string | undefined): "APPROVE" | "
   return "REVIEW";
 }
 
-export default function AssessPage() {
+function AssessPageContent() {
+  const searchParams = useSearchParams();
+  const urlMerchantId = searchParams.get("merchantId")?.trim() || null;
+
   const [step, setStep] = useState<Step>("connect");
   const [progress, setProgress] = useState(0);
   const [selectedScenario, setSelectedScenario] = useState(demoScenarios[0]);
-  const [posCaptures, setPosCaptures] = useState<PosCaptureRecord[]>([]);
-  const [selectedCaptureIds, setSelectedCaptureIds] = useState<string[]>([]);
-  /** File names passed into the current / last run (for AI narrative). */
-  const [evidenceFileNames, setEvidenceFileNames] = useState<string[]>([]);
-  const [analysisByCaptureId, setAnalysisByCaptureId] = useState<Record<string, PosAnalysisResult>>({});
-  const [runningCaptureId, setRunningCaptureId] = useState<string | null>(null);
-  const [sendCaptureId, setSendCaptureId] = useState<string | null>(null);
-  const [merchantSearch, setMerchantSearch] = useState("");
-  const [merchantList, setMerchantList] = useState<Merchant[]>([]);
-  const [loadingMerchants, setLoadingMerchants] = useState(false);
-  const [sendingToMerchant, setSendingToMerchant] = useState(false);
   const [uiMessage, setUiMessage] = useState<string | null>(null);
   const [uiError, setUiError] = useState<string | null>(null);
 
@@ -143,94 +79,6 @@ export default function AssessPage() {
   const [docPipelineLoading, setDocPipelineLoading] = useState(false);
   const [docPipelineError, setDocPipelineError] = useState<string | null>(null);
   const [docPipelineResult, setDocPipelineResult] = useState<FinancialPipelineResult | null>(null);
-
-  // Hydrate POS file list from localStorage after mount (client-only).
-  useEffect(() => {
-    const list = loadPosCapturesFromStorage();
-    setPosCaptures(list);
-    setSelectedCaptureIds(list.map((c) => c.id));
-  }, []);
-
-  const toggleCapture = (id: string) => {
-    setSelectedCaptureIds((prev) =>
-      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
-    );
-  };
-
-  const selectAllCaptures = () => {
-    setSelectedCaptureIds(posCaptures.map((c) => c.id));
-  };
-
-  const runPosAnalysis = async (capture: PosCaptureRecord) => {
-    setUiError(null);
-    setUiMessage(null);
-    setRunningCaptureId(capture.id);
-    try {
-      const result = await apiFetch<PosAnalysisResult>(
-        "/api/ai/pos-assessment",
-        {
-          method: "POST",
-          body: JSON.stringify({
-            captureId: capture.id,
-            fileName: getCaptureFileName(capture),
-            mimeType: capture.mimeType,
-            base64Data: capture.base64Data,
-          }),
-        },
-        { timeoutMs: API_POS_ASSESSMENT_TIMEOUT_MS }
-      );
-      setAnalysisByCaptureId((prev) => ({ ...prev, [capture.id]: result }));
-      setUiMessage(`AI analysis ready for ${result.fileName}.`);
-    } catch (error) {
-      setUiError(isApiError(error) ? error.message : "Failed to run AI assessment for this image.");
-    } finally {
-      setRunningCaptureId(null);
-    }
-  };
-
-  const openSendDialog = async (captureId: string) => {
-    setSendCaptureId(captureId);
-    setUiError(null);
-    setUiMessage(null);
-    setLoadingMerchants(true);
-    try {
-      const data = await apiFetch<MerchantListResponse>("/api/merchants");
-      setMerchantList(data.merchants);
-    } catch (error) {
-      setUiError(isApiError(error) ? error.message : "Failed to load merchants.");
-      setMerchantList([]);
-    } finally {
-      setLoadingMerchants(false);
-    }
-  };
-
-  const filteredMerchants = merchantList.filter((m) =>
-    m.name.toLowerCase().includes(merchantSearch.trim().toLowerCase())
-  );
-
-  const sendAnalysisToMerchant = async (merchantId: string) => {
-    if (!sendCaptureId) return;
-    const analysis = analysisByCaptureId[sendCaptureId];
-    if (!analysis) return;
-    setSendingToMerchant(true);
-    setUiError(null);
-    try {
-      const res = await apiFetch<SavePosAssessmentResponse>("/api/ai/pos-assessment/save", {
-        method: "POST",
-        body: JSON.stringify({
-          merchantId,
-          analysis,
-        }),
-      });
-      setUiMessage(res.message);
-      setSendCaptureId(null);
-      setMerchantSearch("");
-    } catch (error) {
-      setUiError(isApiError(error) ? error.message : "Failed to save analysis for this merchant.");
-    } finally {
-      setSendingToMerchant(false);
-    }
-  };
 
   const runFinancialDocumentPipeline = async () => {
     if (!docPipelineFile) {
@@ -254,11 +102,6 @@ export default function AssessPage() {
   };
 
   const startAssessment = () => {
-    const names = posCaptures
-      .filter((c) => selectedCaptureIds.includes(c.id))
-      .map((c) => getCaptureFileName(c));
-    setEvidenceFileNames(names);
-
     setStep("processing");
     setProgress(0);
     const interval = setInterval(() => {
@@ -280,6 +123,12 @@ export default function AssessPage() {
         <p className="text-muted-foreground">
           Connect POS data and run AI credit scoring for a new merchant.
         </p>
+        {urlMerchantId ? (
+          <p className="mt-2 text-sm text-primary">
+            Merchant pre-selected from URL (<code className="rounded bg-muted px-1 text-xs">?merchantId=</code>
+            ).
+          </p>
+        ) : null}
         {uiMessage ? <p className="mt-2 text-sm text-emerald-600">{uiMessage}</p> : null}
         {uiError ? <p className="mt-2 text-sm text-destructive">{uiError}</p> : null}
       </div>
@@ -291,7 +140,7 @@ export default function AssessPage() {
             <div
               className={`flex h-8 w-8 items-center justify-center rounded-full text-sm font-bold ${
                 step === s
-                  ? "bg-[#0046FF] text-white"
+                  ? "bg-primary text-primary-foreground"
                   : (["connect", "processing", "result"].indexOf(step) > i)
                   ? "bg-emerald-100 text-emerald-700"
                   : "bg-muted text-muted-foreground"
@@ -315,7 +164,7 @@ export default function AssessPage() {
           <Card>
             <CardHeader>
               <CardTitle className="text-base flex items-center gap-2">
-                <Wifi className="h-5 w-5 text-[#0046FF]" />
+                <Wifi className="h-5 w-5 text-primary" />
                 Connect POS Provider
               </CardTitle>
             </CardHeader>
@@ -346,7 +195,7 @@ export default function AssessPage() {
           <Card>
             <CardHeader>
               <CardTitle className="text-base flex items-center gap-2">
-                <Upload className="h-5 w-5 text-[#0046FF]" />
+                <Upload className="h-5 w-5 text-primary" />
                 Upload CSV / JSON
               </CardTitle>
             </CardHeader>
@@ -366,114 +215,11 @@ export default function AssessPage() {
             </CardContent>
           </Card>
 
-          <Card className="lg:col-span-2">
-            <CardHeader>
-              <CardTitle className="text-base flex items-center gap-2">
-                <Camera className="h-5 w-5 text-[#0046FF]" />
-                POS images (Live POS Capture)
-              </CardTitle>
-              <p className="text-sm text-muted-foreground font-normal">
-                Select which saved capture files the AI should treat as POS evidence when scoring.
-                Images stay in your browser; file names are sent to the assessment flow for traceability.
-              </p>
-            </CardHeader>
-            <CardContent>
-              {posCaptures.length === 0 ? (
-                <div className="rounded-lg border border-dashed p-6 text-center">
-                  <p className="text-sm text-muted-foreground mb-3">
-                    No saved captures yet. Capture POS receipts or terminal screens first.
-                  </p>
-                  <Link
-                    href="/live-pos-capture"
-                    className={cn(buttonVariants({ variant: "outline", size: "sm" }))}
-                  >
-                    Open Live POS Capture
-                  </Link>
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between gap-2">
-                    <p className="text-xs text-muted-foreground">
-                      {selectedCaptureIds.length} of {posCaptures.length} file
-                      {posCaptures.length === 1 ? "" : "s"} selected
-                    </p>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      className="h-8 text-xs"
-                      onClick={selectAllCaptures}
-                    >
-                      Select all
-                    </Button>
-                  </div>
-                  <ul className="max-h-48 space-y-2 overflow-y-auto rounded-lg border p-3">
-                    {posCaptures.map((c) => {
-                      const name = getCaptureFileName(c);
-                      const checked = selectedCaptureIds.includes(c.id);
-                      const analysis = analysisByCaptureId[c.id];
-                      const isRunning = runningCaptureId === c.id;
-                      return (
-                        <li key={c.id}>
-                          <div className="rounded border p-2">
-                            <label className="flex cursor-pointer items-start gap-3 text-sm">
-                              <input
-                                type="checkbox"
-                                className="mt-1 h-4 w-4 rounded border-border accent-[#0046FF]"
-                                checked={checked}
-                                onChange={() => toggleCapture(c.id)}
-                              />
-                              <span className="font-mono text-xs leading-snug break-all text-foreground">
-                                {name}
-                              </span>
-                            </label>
-                            <div className="mt-2 flex flex-wrap gap-2">
-                              <Button
-                                size="sm"
-                                className="h-7 text-xs bg-[#0046FF] hover:bg-[#0035CC]"
-                                onClick={() => runPosAnalysis(c)}
-                                disabled={isRunning}
-                              >
-                                {isRunning ? (
-                                  <>
-                                    <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
-                                    Running...
-                                  </>
-                                ) : (
-                                  "Run AI Assessment"
-                                )}
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                className="h-7 text-xs"
-                                onClick={() => openSendDialog(c.id)}
-                                disabled={!analysis}
-                              >
-                                <Send className="mr-1.5 h-3.5 w-3.5" />
-                                Send to Merchant
-                              </Button>
-                            </div>
-                            {analysis ? (
-                              <pre className="mt-2 max-h-52 overflow-auto rounded bg-muted p-2 text-[11px] leading-snug text-foreground">
-                                {JSON.stringify(analysis, null, 2)}
-                              </pre>
-                            ) : null}
-                          </div>
-                        </li>
-                      );
-                    })}
-                  </ul>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
           {/* Multi-document Qwen pipeline (utility / POS / bank) */}
           <Card className="lg:col-span-2">
             <CardHeader>
               <CardTitle className="text-base flex items-center gap-2">
-                <FileText className="h-5 w-5 text-[#0046FF]" />
+                <FileText className="h-5 w-5 text-primary" />
                 Multi-document AI (utility / POS / bank statement)
               </CardTitle>
               <p className="text-sm text-muted-foreground font-normal">
@@ -497,7 +243,6 @@ export default function AssessPage() {
                 </div>
                 <Button
                   type="button"
-                  className="bg-[#0046FF] hover:bg-[#0035CC]"
                   disabled={docPipelineLoading || !docPipelineFile}
                   onClick={() => void runFinancialDocumentPipeline()}
                 >
@@ -570,7 +315,7 @@ export default function AssessPage() {
                     onClick={() => setSelectedScenario(s)}
                     className={`rounded-lg border p-4 text-left transition-all ${
                       selectedScenario.id === s.id
-                        ? "border-[#0046FF] bg-[#0046FF]/5 ring-1 ring-[#0046FF]/20"
+                        ? "border-primary bg-primary/5 ring-1 ring-primary/20"
                         : "hover:border-border/80 hover:bg-muted/50"
                     }`}
                   >
@@ -584,7 +329,7 @@ export default function AssessPage() {
                 ))}
               </div>
               <Button
-                className="mt-6 bg-[#0046FF] hover:bg-[#0035CC]"
+                className="mt-6"
                 onClick={startAssessment}
               >
                 Run AI Assessment
@@ -599,27 +344,15 @@ export default function AssessPage() {
       {step === "processing" && (
         <Card>
           <CardContent className="py-16 flex flex-col items-center">
-            <Loader2 className="h-12 w-12 text-[#0046FF] animate-spin" />
+            <Loader2 className="h-12 w-12 text-primary animate-spin" />
             <h3 className="mt-6 text-lg font-semibold">AI is analyzing merchant data...</h3>
             <p className="text-sm text-muted-foreground mt-2">
               Processing POS transactions, calculating features, generating credit score
             </p>
-            {evidenceFileNames.length > 0 ? (
-              <div className="mt-4 max-w-lg text-left rounded-lg border bg-muted/40 px-3 py-2">
-                <p className="text-xs font-medium text-foreground mb-1">POS evidence files</p>
-                <ul className="text-xs font-mono text-muted-foreground list-disc list-inside space-y-0.5">
-                  {evidenceFileNames.map((name, i) => (
-                    <li key={`${name}-${i}`} className="break-all">
-                      {name}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            ) : (
-              <p className="mt-4 text-xs text-muted-foreground">
-                No POS image files selected — demo scoring uses scenario data only.
-              </p>
-            )}
+            <p className="mt-4 text-xs text-muted-foreground">
+              Demo scoring uses the selected scenario only — for production data use POS upload or the
+              multi-document pipeline above.
+            </p>
             <div className="w-full max-w-md mt-8">
               <Progress value={Math.min(progress, 100)} className="h-2" />
               <div className="flex justify-between mt-2 text-xs text-muted-foreground">
@@ -668,23 +401,8 @@ export default function AssessPage() {
                 In production, this would process real POS transaction data from the connected
                 provider and generate a comprehensive credit analysis.
               </p>
-              {evidenceFileNames.length > 0 ? (
-                <div className="rounded-lg border bg-muted/30 p-3">
-                  <p className="text-xs font-medium text-foreground mb-2">
-                    POS evidence included in this run
-                  </p>
-                  <ul className="text-xs font-mono text-muted-foreground list-decimal list-inside space-y-1">
-                    {evidenceFileNames.map((name, i) => (
-                      <li key={`${name}-${i}`} className="break-all">
-                        {name}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              ) : null}
               <div className="flex flex-col gap-2">
                 <Button
-                  className="bg-[#0046FF] hover:bg-[#0035CC]"
                   onClick={() => setStep("connect")}
                 >
                   Run Another Assessment
@@ -697,55 +415,20 @@ export default function AssessPage() {
           </Card>
         </div>
       )}
-
-      <Dialog open={!!sendCaptureId} onOpenChange={(open) => !open && setSendCaptureId(null)}>
-        <DialogContent className="sm:max-w-xl">
-          <DialogHeader>
-            <DialogTitle>Send AI analysis to merchant</DialogTitle>
-            <DialogDescription>
-              Choose a merchant to attach the selected POS analysis into credit history.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-3">
-            <Input
-              value={merchantSearch}
-              onChange={(e) => setMerchantSearch(e.target.value)}
-              placeholder="Search merchant by name..."
-            />
-            <div className="max-h-80 overflow-y-auto rounded border">
-              {loadingMerchants ? (
-                <div className="p-4 text-sm text-muted-foreground">Loading merchants...</div>
-              ) : filteredMerchants.length === 0 ? (
-                <div className="p-4 text-sm text-muted-foreground">No merchants found.</div>
-              ) : (
-                <div className="divide-y">
-                  {filteredMerchants.map((m) => (
-                    <button
-                      key={m.id}
-                      type="button"
-                      className="w-full p-3 text-left hover:bg-muted/40 transition-colors"
-                      onClick={() => sendAnalysisToMerchant(m.id)}
-                      disabled={sendingToMerchant}
-                    >
-                      <p className="text-sm font-medium">{m.name}</p>
-                      <p className="text-xs text-muted-foreground">{m.category} • {m.city}</p>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setSendCaptureId(null)}
-              disabled={sendingToMerchant}
-            >
-              Close
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
+  );
+}
+
+export default function AssessPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex items-center justify-center py-20">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        </div>
+      }
+    >
+      <AssessPageContent />
+    </Suspense>
   );
 }

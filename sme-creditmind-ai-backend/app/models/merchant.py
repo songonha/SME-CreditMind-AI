@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Optional, List, TYPE_CHECKING
 
-from sqlalchemy import String, Integer, DateTime, func
+from sqlalchemy import String, Integer, DateTime, ForeignKey, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -11,12 +11,16 @@ from app.database import Base
 if TYPE_CHECKING:
     from app.models.transaction import Transaction
     from app.models.credit_score import CreditScore
+    from app.models.organization import Organization
 
 
 class Merchant(Base):
     __tablename__ = "merchants"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    organization_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("organizations.id"), index=True
+    )
     name: Mapped[str] = mapped_column(String(255))
     business_reg_no: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
     tax_id: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
@@ -36,5 +40,6 @@ class Merchant(Base):
         DateTime, server_default=func.now(), onupdate=func.now()
     )
 
+    organization: Mapped["Organization"] = relationship(back_populates="merchants")
     transactions: Mapped[List[Transaction]] = relationship(back_populates="merchant")
     credit_scores: Mapped[List[CreditScore]] = relationship(back_populates="merchant")

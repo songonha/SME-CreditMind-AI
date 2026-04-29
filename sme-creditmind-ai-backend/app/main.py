@@ -2,36 +2,65 @@ from datetime import datetime
 
 from fastapi import FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
 from sqlalchemy import text
 
+from app.api import (
+    ai_chat,
+    auth,
+    credit_scores,
+    dashboard,
+    financial_documents,
+    loan_cases,
+    merchants,
+    reports,
+    subscription,
+    transactions,
+)
+from app.bootstrap import ensure_demo_tenant, ensure_subscription_plans
 from app.config import settings
-from app.database import create_tables, engine
-from app.api import merchants, credit_scores, dashboard, transactions, ai_chat, financial_documents
+from app.database import SessionLocal, create_tables, engine
+from app.limiter import limiter
 from app.services.pos_orchestrator import get_provider_health
 
-app = FastAPI(title=settings.APP_NAME, version="1.0.0")
+app = FastAPI(title=settings.APP_NAME, version="2.0.0")
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+app.add_middleware(SlowAPIMiddleware)
 
-app.add_middleware(
-    CORSMiddleware,
+_cors_kwargs = dict(
     allow_origins=settings.CORS_ORIGINS,
-    # Any port on localhost / 127.0.0.1 (e.g. Next on :3000) so browser→API on :8000 is not blocked.
-    allow_origin_regex=r"https?://(localhost|127\.0\.0\.1)(:\d+)?",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+if settings.CORS_ALLOW_LOCAL_REGEX:
+    _cors_kwargs["allow_origin_regex"] = r"https?://(localhost|127\.0\.0\.1)(:\d+)?"
+app.add_middleware(CORSMiddleware, **_cors_kwargs)
 
+app.include_router(auth.router)
 app.include_router(merchants.router)
 app.include_router(credit_scores.router)
 app.include_router(dashboard.router)
 app.include_router(transactions.router)
 app.include_router(ai_chat.router)
 app.include_router(financial_documents.router)
+app.include_router(reports.router)
+app.include_router(subscription.router)
+app.include_router(loan_cases.router)
 
 
 @app.on_event("startup")
 def on_startup():
     create_tables()
+    db = SessionLocal()
+    try:
+        ensure_subscription_plans(db)
+        ensure_demo_tenant(db)
+    finally:
+        db.close()
 
 
 @app.get("/api/health")
@@ -48,6 +77,7 @@ def health(verbose: bool = Query(default=True)):
     return {
         "status": overall_status,
         "service": settings.APP_NAME,
+        "version": "2.0.0",
         "checkedAt": datetime.utcnow().isoformat() + "Z",
         "database": db_health,
         "aiProviders": ai_health,

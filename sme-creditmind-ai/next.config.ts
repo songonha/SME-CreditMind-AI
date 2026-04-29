@@ -2,9 +2,10 @@ import type { NextConfig } from "next";
 
 /** FastAPI base URL for local proxy (server-side only; not exposed to the client). */
 const backendInternalOrigin =
-  process.env.BACKEND_INTERNAL_ORIGIN ?? "http://127.0.0.1:8000";
+  process.env.BACKEND_INTERNAL_ORIGIN ?? "http://127.0.0.1:8012";
 
 const nextConfig: NextConfig = {
+  output: "standalone",
   /**
    * Rewrites to FastAPI default to a short proxy timeout (~30s), which breaks long
    * LLM calls (e.g. financial-document-pipeline). Allow several minutes.

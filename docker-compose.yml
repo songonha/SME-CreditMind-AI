@@ -1,0 +1,50 @@
+# Bank-ready local / self-hosted stack: PostgreSQL + FastAPI + Next.js (proxy to API).
+# Usage: from repo root — docker compose up --build
+# Then: docker compose exec backend python app/seed.py (first run)
+# Login (seed): admin@demo.creditmind.example.com / DemoBank!2026 — header X-Organization-Id: org-demo
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: creditmind
+      POSTGRES_PASSWORD: creditmind
+      POSTGRES_DB: creditmind
+    ports:
+      - "5432:5432"
+    volumes:
+      - creditmind_pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U creditmind -d creditmind"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./sme-creditmind-ai-backend
+    ports:
+      - "8008:8008"
+    environment:
+      CREDITMIND_DATABASE_URL: postgresql+psycopg2://creditmind:creditmind@db:5432/creditmind
+      CREDITMIND_JWT_SECRET_KEY: ${CREDITMIND_JWT_SECRET_KEY:-change-me-in-production}
+      CREDITMIND_CORS_ORIGINS: '["http://localhost:3000","http://127.0.0.1:3000"]'
+      CREDITMIND_CORS_ALLOW_LOCAL_REGEX: "false"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: ./sme-creditmind-ai
+      args:
+        BACKEND_INTERNAL_ORIGIN: http://backend:8008
+    ports:
+      - "3000:3000"
+    environment:
+      BACKEND_INTERNAL_ORIGIN: http://backend:8008
+    depends_on:
+      - backend
+
+volumes:
+  creditmind_pg:

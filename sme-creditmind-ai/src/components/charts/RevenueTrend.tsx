@@ -28,8 +28,8 @@ export function RevenueTrend({ data }: RevenueTrendProps) {
       <AreaChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
         <defs>
           <linearGradient id="revenueGrad" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="5%" stopColor="#0046FF" stopOpacity={0.2} />
-            <stop offset="95%" stopColor="#0046FF" stopOpacity={0} />
+            <stop offset="5%" stopColor="var(--chart-accent)" stopOpacity={0.2} />
+            <stop offset="95%" stopColor="var(--chart-accent)" stopOpacity={0} />
           </linearGradient>
         </defs>
         <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
@@ -46,7 +46,7 @@ export function RevenueTrend({ data }: RevenueTrendProps) {
             return (
               <div className="rounded-lg border bg-card p-3 shadow-lg">
                 <p className="text-sm font-semibold">{d.label}</p>
-                <p className="text-sm text-[#0046FF]">Revenue: {formatVND(d.revenue)}</p>
+                <p className="text-sm text-primary">Revenue: {formatVND(d.revenue)}</p>
                 <p className="text-xs text-muted-foreground">{d.transactionCount} transactions</p>
                 <p className="text-xs text-muted-foreground">{d.uniqueCustomers} unique customers</p>
               </div>
@@ -56,7 +56,7 @@ export function RevenueTrend({ data }: RevenueTrendProps) {
         <Area
           type="monotone"
           dataKey="revenueM"
-          stroke="#0046FF"
+          stroke="var(--chart-accent)"
           strokeWidth={2}
           fill="url(#revenueGrad)"
         />

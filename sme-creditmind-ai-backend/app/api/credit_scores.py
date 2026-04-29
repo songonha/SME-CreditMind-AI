@@ -3,11 +3,24 @@ from sqlalchemy import desc
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.deps.auth import OrgContext, get_org_context
+from app.models.merchant import Merchant
 from app.models.credit_score import CreditScore, CreditFactor
 from app.schemas.credit_score import CreditScoreOut, CreditFactorOut
 from app.services.scoring_engine import run_assessment
 
 router = APIRouter(tags=["credit-scores"])
+
+
+def _merchant_in_org(db: Session, merchant_id: str, org_id: str) -> Merchant | None:
+    return (
+        db.query(Merchant)
+        .filter(
+            Merchant.id == merchant_id,
+            Merchant.organization_id == org_id,
+        )
+        .first()
+    )
 
 
 def _score_to_out(score: CreditScore, factors: list[CreditFactor]) -> CreditScoreOut:
@@ -41,7 +54,13 @@ def _score_to_out(score: CreditScore, factors: list[CreditFactor]) -> CreditScor
 
 
 @router.get("/api/credit-score/{merchant_id}", response_model=CreditScoreOut)
-def get_credit_score(merchant_id: str, db: Session = Depends(get_db)):
+def get_credit_score(
+    merchant_id: str,
+    ctx: OrgContext = Depends(get_org_context),
+    db: Session = Depends(get_db),
+):
+    if not _merchant_in_org(db, merchant_id, ctx.organization_id):
+        raise HTTPException(404, "Merchant not found")
     score = (
         db.query(CreditScore)
         .filter(CreditScore.merchant_id == merchant_id)
@@ -60,8 +79,14 @@ def get_credit_score(merchant_id: str, db: Session = Depends(get_db)):
 
 
 @router.post("/api/assess/{merchant_id}", response_model=CreditScoreOut)
-def assess_merchant(merchant_id: str, db: Session = Depends(get_db)):
+def assess_merchant(
+    merchant_id: str,
+    ctx: OrgContext = Depends(get_org_context),
+    db: Session = Depends(get_db),
+):
     """Trigger a new credit assessment from real transaction data."""
+    if not _merchant_in_org(db, merchant_id, ctx.organization_id):
+        raise HTTPException(404, "Merchant not found")
     try:
         score = run_assessment(db, merchant_id)
     except ValueError as e:

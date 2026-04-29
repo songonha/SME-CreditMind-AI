@@ -1,3 +1,5 @@
+import { getAccessToken, getOrganizationId } from "@/lib/session";
+
 const API_BASE = (process.env.NEXT_PUBLIC_API_URL || "").replace(/\/$/, "");
 /** Default for quick JSON APIs (merchants, dashboard, etc.). */
 const API_TIMEOUT_MS = 10000;
@@ -29,6 +31,7 @@ function buildErrorCode(status: number): string {
   if (status === 404) return "NOT_FOUND";
   if (status === 401) return "UNAUTHORIZED";
   if (status === 403) return "FORBIDDEN";
+  if (status === 402) return "PAYMENT_REQUIRED";
   if (status >= 400) return "BAD_REQUEST";
   return "UNKNOWN_ERROR";
 }
@@ -36,9 +39,70 @@ function buildErrorCode(status: number): string {
 function buildErrorMessage(status: number): string {
   if (status >= 500) return "The server is temporarily unavailable. Please try again later.";
   if (status === 404) return "The requested resource was not found.";
+  if (status === 402) return "Quota or plan limit reached. Upgrade your subscription.";
+  if (status === 429) return "Too many requests. Please wait a minute and try again.";
+  if (status === 422)
+    return "Invalid input. Check the form fields — see the message above if provided.";
   if (status === 401 || status === 403) return "You do not have permission to access this resource.";
   if (status >= 400) return "Invalid request. Please check your input and try again.";
   return "Something went wrong. Please try again.";
+}
+
+/** FastAPI may return `detail` as a string, or a list of validation errors. */
+function extractFastApiDetail(data: unknown): string {
+  if (!data || typeof data !== "object") return "";
+  const detail = (data as { detail?: unknown }).detail;
+  if (typeof detail === "string") return detail;
+  if (Array.isArray(detail)) {
+    const parts = detail
+      .map((item) => {
+        if (item && typeof item === "object" && "msg" in item) {
+          const msg = (item as { msg?: unknown }).msg;
+          const loc = (item as { loc?: unknown[] }).loc;
+          if (typeof msg !== "string") return "";
+          const path =
+            Array.isArray(loc) && loc.length > 0
+              ? loc
+                  .filter((x) => x !== "body")
+                  .map((x) => String(x))
+                  .join(".")
+              : "";
+          return path ? `${path}: ${msg}` : msg;
+        }
+        return "";
+      })
+      .filter(Boolean);
+    return parts.join("; ");
+  }
+  return "";
+}
+
+function pathNeedsAuth(path: string): boolean {
+  if (path === "/api/health") return false;
+  if (path.startsWith("/api/auth/login")) return false;
+  if (path.startsWith("/api/auth/register")) return false;
+  if (path.startsWith("/api/auth/refresh")) return false;
+  if (path.startsWith("/api/auth/forgot-password")) return false;
+  if (path.startsWith("/api/auth/reset-password")) return false;
+  return true;
+}
+
+function pathNeedsOrganization(path: string): boolean {
+  if (!pathNeedsAuth(path)) return false;
+  if (path.startsWith("/api/auth/")) return false;
+  return true;
+}
+
+function authHeadersForPath(path: string): HeadersInit {
+  const headers: Record<string, string> = {};
+  if (!pathNeedsAuth(path)) return headers;
+  const token = getAccessToken();
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  if (pathNeedsOrganization(path)) {
+    const org = getOrganizationId();
+    if (org) headers["X-Organization-Id"] = org;
+  }
+  return headers;
 }
 
 export async function apiFetch<T>(
@@ -58,6 +122,7 @@ export async function apiFetch<T>(
       signal: init?.signal ?? controller.signal,
       headers: {
         "Content-Type": "application/json",
+        ...authHeadersForPath(normalizedPath),
         ...init?.headers,
       },
     });
@@ -66,7 +131,7 @@ export async function apiFetch<T>(
       let details = "";
       try {
         const data = await res.json();
-        if (typeof data?.detail === "string") details = data.detail;
+        details = extractFastApiDetail(data);
       } catch {
         // Ignore non-JSON error responses.
       }
@@ -119,13 +184,16 @@ export async function apiUploadJson<T>(
       method: "POST",
       body: formData,
       signal: controller.signal,
+      headers: {
+        ...authHeadersForPath(normalizedPath),
+      },
     });
 
     if (!res.ok) {
       let details = "";
       try {
         const data = await res.json();
-        if (typeof data?.detail === "string") details = data.detail;
+        details = extractFastApiDetail(data);
       } catch {
         // Ignore non-JSON error responses.
       }
@@ -153,6 +221,46 @@ export async function apiUploadJson<T>(
       throw new ApiError(error.message, { code: "NETWORK_ERROR" });
     }
     throw new ApiError("Could not connect to the server.", { code: "NETWORK_ERROR" });
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+/** Download binary (e.g. PDF). Returns blob on success. */
+export async function apiFetchBlob(
+  path: string,
+  init?: RequestInit,
+  options?: { timeoutMs?: number }
+): Promise<Blob> {
+  const normalizedPath = path.startsWith("/") ? path : `/${path}`;
+  const url = `${API_BASE}${normalizedPath}`;
+  const controller = new AbortController();
+  const timeoutMs = options?.timeoutMs ?? API_TIMEOUT_MS;
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(url, {
+      ...init,
+      signal: init?.signal ?? controller.signal,
+      headers: {
+        ...authHeadersForPath(normalizedPath),
+        ...init?.headers,
+      },
+    });
+    if (!res.ok) {
+      let details = "";
+      try {
+        const data = await res.json();
+        details = extractFastApiDetail(data);
+      } catch {
+        /* ignore */
+      }
+      throw new ApiError(details || buildErrorMessage(res.status), {
+        status: res.status,
+        code: buildErrorCode(res.status),
+        details,
+      });
+    }
+    return await res.blob();
   } finally {
     clearTimeout(timeout);
   }

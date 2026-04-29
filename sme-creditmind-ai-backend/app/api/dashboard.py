@@ -3,6 +3,7 @@ from sqlalchemy import desc, func as sa_func
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.deps.auth import OrgContext, get_org_context
 from app.models.merchant import Merchant
 from app.models.credit_score import CreditScore
 from app.models.alert import Alert
@@ -27,8 +28,13 @@ SCORE_RANGES = [
 
 
 @router.get("/stats", response_model=DashboardStatsOut)
-def get_dashboard_stats(db: Session = Depends(get_db)):
-    merchants = db.query(Merchant).all()
+def get_dashboard_stats(
+    ctx: OrgContext = Depends(get_org_context),
+    db: Session = Depends(get_db),
+):
+    merchants = (
+        db.query(Merchant).filter(Merchant.organization_id == ctx.organization_id).all()
+    )
     total = len(merchants)
 
     latest_scores: dict[str, CreditScore] = {}
@@ -82,12 +88,17 @@ def get_dashboard_stats(db: Session = Depends(get_db)):
         if s.merchant_id in merchant_map
     ]
 
-    alerts_db = (
-        db.query(Alert)
-        .order_by(desc(Alert.created_at))
-        .limit(10)
-        .all()
-    )
+    merchant_ids = {m.id for m in merchants}
+    if merchant_ids:
+        alerts_db = (
+            db.query(Alert)
+            .filter(Alert.merchant_id.in_(merchant_ids))
+            .order_by(desc(Alert.created_at))
+            .limit(10)
+            .all()
+        )
+    else:
+        alerts_db = []
     alerts_out = []
     for a in alerts_db:
         m = merchant_map.get(a.merchant_id)

@@ -1,74 +1,169 @@
 "use client";
 
-import { FileText, Download, Calendar } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
+import { FileText, Download, Calendar, Loader2 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { apiFetch, apiFetchBlob, isApiError } from "@/lib/api";
 
-const reports = [
-  { id: 1, name: "Q1 2026 Portfolio Summary", type: "Portfolio", date: "2026-04-01", status: "Ready" },
-  { id: 2, name: "March 2026 Risk Assessment Report", type: "Risk", date: "2026-03-31", status: "Ready" },
-  { id: 3, name: "New Merchant Onboarding — Batch #12", type: "Assessment", date: "2026-03-25", status: "Ready" },
-  { id: 4, name: "Compliance Audit — Grade D/E Merchants", type: "Compliance", date: "2026-03-20", status: "Ready" },
-  { id: 5, name: "February 2026 Risk Assessment Report", type: "Risk", date: "2026-02-28", status: "Archived" },
-];
+type ReportRow = {
+  id: string;
+  title: string;
+  reportType: string;
+  createdAt: string;
+};
+
+type ReportListResponse = { reports: ReportRow[] };
 
 export default function ReportsPage() {
+  const [reports, setReports] = useState<ReportRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [generating, setGenerating] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    setError(null);
+    setLoading(true);
+    try {
+      const list = await apiFetch<ReportListResponse>("/api/reports");
+      setReports(list.reports);
+    } catch (e) {
+      setError(isApiError(e) ? e.message : "Failed to load reports.");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const generate = async () => {
+    setGenerating(true);
+    setError(null);
+    try {
+      const blob = await apiFetchBlob("/api/reports/generate/portfolio-summary", {
+        method: "POST",
+      });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `portfolio-summary-${new Date().toISOString().slice(0, 10)}.pdf`;
+      a.click();
+      URL.revokeObjectURL(url);
+      await load();
+    } catch (e) {
+      setError(isApiError(e) ? e.message : "Could not generate report.");
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  const download = async (id: string, title: string) => {
+    try {
+      const blob = await apiFetchBlob(`/api/reports/${id}/download`);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${title.replace(/\s+/g, "-")}.pdf`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      setError(isApiError(e) ? e.message : "Download failed.");
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Reports</h1>
           <p className="text-muted-foreground">
-            Generate and download compliance-ready portfolio reports.
+            Generate and download compliance-ready portfolio reports (entitlement required).
+          </p>
+          <p className="text-xs text-muted-foreground mt-1">
+            <Link
+              href="/billing"
+              className="text-primary underline-offset-4 hover:underline font-medium"
+            >
+              View usage &amp; plans
+            </Link>
           </p>
         </div>
-        <Button className="bg-[#0046FF] hover:bg-[#0035CC]">
-          <FileText className="mr-2 h-4 w-4" />
-          Generate Report
+        <Button
+          onClick={generate}
+          disabled={generating || loading}
+        >
+          {generating ? (
+            <>
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              Generating…
+            </>
+          ) : (
+            <>
+              <FileText className="mr-2 h-4 w-4" />
+              Generate Report
+            </>
+          )}
         </Button>
       </div>
+
+      {error && <p className="text-sm text-destructive">{error}</p>}
 
       <Card>
         <CardHeader>
           <CardTitle className="text-base">Report History</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="space-y-3">
-            {reports.map((r) => (
-              <div
-                key={r.id}
-                className="flex items-center justify-between rounded-lg border p-4"
-              >
-                <div className="flex items-center gap-4">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-[#0046FF]/10">
-                    <FileText className="h-5 w-5 text-[#0046FF]" />
-                  </div>
-                  <div>
-                    <p className="font-medium text-sm">{r.name}</p>
-                    <div className="flex items-center gap-2 mt-1">
-                      <Badge variant="outline" className="text-xs">{r.type}</Badge>
-                      <span className="flex items-center gap-1 text-xs text-muted-foreground">
-                        <Calendar className="h-3 w-3" />
-                        {r.date}
-                      </span>
+          {loading ? (
+            <p className="text-sm text-muted-foreground">Loading…</p>
+          ) : (
+            <div className="space-y-3">
+              {reports.length === 0 && (
+                <p className="text-sm text-muted-foreground">No reports yet. Generate one above.</p>
+              )}
+              {reports.map((r) => (
+                <div
+                  key={r.id}
+                  className="flex items-center justify-between rounded-lg border p-4"
+                >
+                  <div className="flex items-center gap-4">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
+                      <FileText className="h-5 w-5 text-primary" />
+                    </div>
+                    <div>
+                      <p className="font-medium text-sm">{r.title}</p>
+                      <div className="flex items-center gap-2 mt-1">
+                        <Badge variant="outline" className="text-xs">
+                          {r.reportType}
+                        </Badge>
+                        <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                          <Calendar className="h-3 w-3" />
+                          {r.createdAt.slice(0, 10)}
+                        </span>
+                      </div>
                     </div>
                   </div>
+                  <div className="flex items-center gap-2">
+                    <Badge variant="secondary" className="text-emerald-700 bg-emerald-50">
+                      Ready
+                    </Badge>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8"
+                      onClick={() => download(r.id, r.title)}
+                      aria-label="Download"
+                    >
+                      <Download className="h-4 w-4" />
+                    </Button>
+                  </div>
                 </div>
-                <div className="flex items-center gap-2">
-                  <Badge
-                    variant="secondary"
-                    className={r.status === "Ready" ? "text-emerald-700 bg-emerald-50" : ""}
-                  >
-                    {r.status}
-                  </Badge>
-                  <Button variant="ghost" size="icon" className="h-8 w-8">
-                    <Download className="h-4 w-4" />
-                  </Button>
-                </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>

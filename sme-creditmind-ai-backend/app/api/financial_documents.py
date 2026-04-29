@@ -2,8 +2,12 @@ from __future__ import annotations
 
 from typing import Any, Dict
 
-from fastapi import APIRouter, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from sqlalchemy.orm import Session
 
+from app.database import get_db
+from app.deps.auth import OrgContext, get_org_context
+from app.services.entitlements import assert_ai_quota, record_ai_usage
 from app.services.financial_document_pipeline import run_financial_document_pipeline
 
 router = APIRouter(prefix="/api/ai", tags=["ai"])
@@ -21,7 +25,11 @@ ALLOWED_CONTENT_TYPES = frozenset(
 
 
 @router.post("/financial-document-pipeline")
-async def financial_document_pipeline(file: UploadFile = File(...)) -> Dict[str, Any]:
+async def financial_document_pipeline(
+    file: UploadFile = File(...),
+    ctx: OrgContext = Depends(get_org_context),
+    db: Session = Depends(get_db),
+) -> Dict[str, Any]:
     """
     Multi-document flow: utility bill / POS / bank statement image → parse → analyze → credit JSON.
     """
@@ -40,8 +48,16 @@ async def financial_document_pipeline(file: UploadFile = File(...)) -> Dict[str,
 
     mime = content_type if content_type in ALLOWED_CONTENT_TYPES else "image/jpeg"
 
+    assert_ai_quota(db, ctx.organization_id)
     try:
-        return await run_financial_document_pipeline(image_bytes=data, mime_type=mime)
+        result = await run_financial_document_pipeline(image_bytes=data, mime_type=mime)
+        record_ai_usage(
+            db,
+            organization_id=ctx.organization_id,
+            user_id=ctx.user.id,
+            event_type="financial_document_pipeline",
+        )
+        return result
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     except ValueError as exc:

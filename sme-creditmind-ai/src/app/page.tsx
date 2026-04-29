@@ -87,7 +87,7 @@ export default function LandingPage() {
       <nav className="sticky top-0 z-50 border-b border-border/50 bg-white/80 backdrop-blur-md">
         <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-6">
           <div className="flex items-center gap-3">
-            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#0046FF] text-white font-bold text-sm">
+            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary text-primary-foreground font-bold text-sm">
               CM
             </div>
             <span className="text-lg font-bold tracking-tight">CreditMind AI</span>
@@ -98,7 +98,7 @@ export default function LandingPage() {
             <a href="#impact" className="text-sm text-muted-foreground hover:text-foreground transition-colors">Impact</a>
           </div>
           <Link href="/dashboard">
-            <Button className="bg-[#0046FF] hover:bg-[#0035CC]">
+            <Button>
               Open Dashboard
               <ArrowRight className="ml-2 h-4 w-4" />
             </Button>
@@ -108,30 +108,28 @@ export default function LandingPage() {
 
       {/* Hero */}
       <section className="relative overflow-hidden bg-gradient-to-br from-slate-50 via-blue-50/30 to-white">
-        <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHZpZXdCb3g9IjAgMCA2MCA2MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48ZyBmaWxsPSJub25lIiBmaWxsLXJ1bGU9ImV2ZW5vZGQiPjxnIGZpbGw9IiMwMDQ2RkYiIGZpbGwtb3BhY2l0eT0iMC4wMyI+PHBhdGggZD0iTTM2IDE4YzAtOS45NC04LjA2LTE4LTE4LTE4UzAgOC4wNiAwIDE4czguMDYgMTggMTggMTggMTgtOC4wNiAxOC0xOHoiLz48L2c+PC9nPjwvc3ZnPg==')] opacity-50" />
+        <div className="absolute inset-0 bg-primary/[0.04]" />
         <div className="relative mx-auto max-w-7xl px-6 py-24 md:py-32">
           <div className="mx-auto max-w-3xl text-center">
-            <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-[#0046FF]/20 bg-[#0046FF]/5 px-4 py-1.5">
-              <Globe className="h-4 w-4 text-[#0046FF]" />
-              <span className="text-sm font-medium text-[#0046FF]">
-                Shinhan Bank × Qwen AI Build Day (SB09)
+            <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-primary/20 bg-primary/5 px-4 py-1.5">
+              <Globe className="h-4 w-4 text-primary" />
+              <span className="text-sm font-medium text-primary">
+                Shinhan Bank × Qwen AI
               </span>
             </div>
             <h1 className="text-4xl font-extrabold tracking-tight text-foreground sm:text-5xl md:text-6xl">
               One Dashboard.{" "}
-              <span className="bg-gradient-to-r from-[#0046FF] to-[#0080FF] bg-clip-text text-transparent">
+              <span className="bg-gradient-to-r from-primary to-sky-500 bg-clip-text text-transparent">
                 Zero Guesswork.
               </span>
             </h1>
             <p className="mt-6 text-lg text-muted-foreground leading-relaxed max-w-2xl mx-auto">
-              AI-Driven SME Credit Scoring via POS Data. Transform real-time merchant
-              sales data into instant, explainable credit decisions — enabling faster,
-              data-driven lending without traditional financial statements.
+              SME credit from live POS data — faster decisions, clearer explanations, less reliance on static reports.
             </p>
             <div className="mt-10 flex flex-col sm:flex-row items-center justify-center gap-4">
               <Link href="/dashboard">
-                <Button size="lg" className="bg-[#0046FF] hover:bg-[#0035CC] h-12 px-8 text-base">
-                  Explore Dashboard
+                <Button size="lg" className="h-12 px-8 text-base">
+                  Open dashboard
                   <ArrowRight className="ml-2 h-5 w-5" />
                 </Button>
               </Link>
@@ -147,7 +145,7 @@ export default function LandingPage() {
           <div className="mt-20 grid grid-cols-2 gap-4 sm:grid-cols-4 mx-auto max-w-3xl">
             {stats.map((stat) => (
               <div key={stat.label} className="rounded-xl border bg-white/80 backdrop-blur p-4 text-center shadow-sm">
-                <p className="text-2xl font-extrabold text-[#0046FF]">{stat.value}</p>
+                <p className="text-2xl font-extrabold text-primary">{stat.value}</p>
                 <p className="mt-1 text-xs text-muted-foreground">{stat.label}</p>
               </div>
             ))}
@@ -169,9 +167,9 @@ export default function LandingPage() {
             {features.map((feature) => (
               <div
                 key={feature.title}
-                className="group rounded-2xl border bg-card p-6 transition-all hover:shadow-lg hover:border-[#0046FF]/20"
+                className="group rounded-2xl border bg-card p-6 transition-all hover:shadow-lg hover:border-primary/20"
               >
-                <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-[#0046FF]/10 text-[#0046FF] transition-colors group-hover:bg-[#0046FF] group-hover:text-white">
+                <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10 text-primary transition-colors group-hover:bg-primary group-hover:text-primary-foreground">
                   <feature.icon className="h-6 w-6" />
                 </div>
                 <h3 className="text-lg font-semibold">{feature.title}</h3>
@@ -198,16 +196,16 @@ export default function LandingPage() {
               <div key={step.step} className="relative">
                 {i < steps.length - 1 && (
                   <div className="absolute top-12 left-[calc(50%+40px)] right-[calc(-50%+40px)] hidden md:block">
-                    <div className="h-px w-full bg-[#0046FF]/20" />
-                    <ArrowRight className="absolute -right-2 -top-2 h-4 w-4 text-[#0046FF]/30" />
+                    <div className="h-px w-full bg-primary/20" />
+                    <ArrowRight className="absolute -right-2 -top-2 h-4 w-4 text-primary/30" />
                   </div>
                 )}
                 <div className="flex flex-col items-center text-center">
                   <div className="relative mb-6">
-                    <div className="flex h-20 w-20 items-center justify-center rounded-2xl bg-[#0046FF] text-white shadow-lg shadow-[#0046FF]/20">
+                    <div className="flex h-20 w-20 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-lg shadow-primary/20">
                       <step.icon className="h-9 w-9" />
                     </div>
-                    <span className="absolute -top-2 -right-2 flex h-7 w-7 items-center justify-center rounded-full bg-white border-2 border-[#0046FF] text-xs font-bold text-[#0046FF]">
+                    <span className="absolute -top-2 -right-2 flex h-7 w-7 items-center justify-center rounded-full bg-white border-2 border-primary text-xs font-bold text-primary">
                       {step.step}
                     </span>
                   </div>
@@ -223,33 +221,33 @@ export default function LandingPage() {
       </section>
 
       {/* Impact / CTA */}
-      <section id="impact" className="bg-gradient-to-br from-[#0046FF] to-[#0035CC] py-24 text-white">
+      <section id="impact" className="bg-gradient-to-br from-primary to-primary/75 py-24 text-primary-foreground">
         <div className="mx-auto max-w-7xl px-6 text-center">
           <h2 className="text-3xl font-bold tracking-tight">
             Transforming SME Lending for Shinhan Bank
           </h2>
-          <p className="mt-4 text-blue-100 max-w-2xl mx-auto">
+          <p className="mt-4 text-primary-foreground/85 max-w-2xl mx-auto">
             Enable faster credit decisions, unlock new customer segments, and build a
             data-driven SME lending portfolio — all powered by AI.
           </p>
           <div className="mt-12 grid grid-cols-1 sm:grid-cols-3 gap-8 max-w-3xl mx-auto">
             <div>
               <p className="text-4xl font-extrabold">5x</p>
-              <p className="mt-2 text-sm text-blue-100">Faster credit assessment turnaround</p>
+              <p className="mt-2 text-sm text-primary-foreground/80">Faster credit assessment turnaround</p>
             </div>
             <div>
               <p className="text-4xl font-extrabold">30%+</p>
-              <p className="mt-2 text-sm text-blue-100">Increase in SME loan approval rate</p>
+              <p className="mt-2 text-sm text-primary-foreground/80">Increase in SME loan approval rate</p>
             </div>
             <div>
               <p className="text-4xl font-extrabold">100%</p>
-              <p className="mt-2 text-sm text-blue-100">Explainable AI decisions for compliance</p>
+              <p className="mt-2 text-sm text-primary-foreground/80">Explainable AI decisions for compliance</p>
             </div>
           </div>
           <Link href="/dashboard" className="mt-12 inline-block">
             <Button
               size="lg"
-              className="bg-white text-[#0046FF] hover:bg-blue-50 h-12 px-8 text-base font-semibold"
+              className="bg-white text-primary hover:bg-primary/5 h-12 px-8 text-base font-semibold"
             >
               Try the Dashboard Now
               <ArrowRight className="ml-2 h-5 w-5" />
@@ -262,7 +260,7 @@ export default function LandingPage() {
       <footer className="border-t bg-white py-8">
         <div className="mx-auto max-w-7xl px-6 flex flex-col sm:flex-row items-center justify-between gap-4">
           <div className="flex items-center gap-2">
-            <div className="flex h-7 w-7 items-center justify-center rounded bg-[#0046FF] text-white text-xs font-bold">
+            <div className="flex h-7 w-7 items-center justify-center rounded bg-primary text-primary-foreground text-xs font-bold">
               CM
             </div>
             <span className="text-sm font-semibold">SME CreditMind AI</span>

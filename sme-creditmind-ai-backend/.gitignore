@@ -1,0 +1,9 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+creditmind.db
+_alembic_empty.db
+_test_migrate.db
+.env
+.env.local

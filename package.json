@@ -7,11 +7,17 @@
   ],
   "scripts": {
     "dev": "npx --yes concurrently \"cd sme-creditmind-ai && npx next dev -H 127.0.0.1 -p 3000\" \"bash sme-creditmind-ai-backend/run-backend.sh\"",
+    "dev:win": "npx --yes concurrently \"cd sme-creditmind-ai && npx next dev -H 127.0.0.1 -p 3000\" \"npm run dev:backend:win\"",
     "dev:frontend": "cd sme-creditmind-ai && npx next dev -H 127.0.0.1 -p 3000",
     "dev:backend": "bash sme-creditmind-ai-backend/run-backend.sh",
+    "dev:backend:win": "cd sme-creditmind-ai-backend && set CREDITMIND_PORT=8012&& .venv\\Scripts\\python.exe run.py",
     "setup:backend": "cd sme-creditmind-ai-backend && python3 -m venv .venv && .venv/bin/pip install --upgrade pip && .venv/bin/pip install -r requirements.txt",
+    "setup:backend:win": "cd sme-creditmind-ai-backend && python -m venv .venv && .venv\\Scripts\\python.exe -m pip install --upgrade pip && .venv\\Scripts\\pip.exe install -r requirements.txt",
+    "seed:backend:win": "cd sme-creditmind-ai-backend && .venv\\Scripts\\python.exe -m app.seed",
+    "seed:workflow:win": "cd sme-creditmind-ai-backend && .venv\\Scripts\\python.exe -m app.seed_workflow_demo",
     "build": "cd sme-creditmind-ai && npx next build",
-    "start": "npx --yes concurrently \"cd sme-creditmind-ai && npx next start -H 127.0.0.1 -p 3000\" \"bash sme-creditmind-ai-backend/run-backend.sh\""
+    "start": "npx --yes concurrently \"cd sme-creditmind-ai && npx next start -H 127.0.0.1 -p 3000\" \"bash sme-creditmind-ai-backend/run-backend.sh\"",
+    "start:win": "npx --yes concurrently \"cd sme-creditmind-ai && npx next start -H 127.0.0.1 -p 3000\" \"npm run dev:backend:win\""
   },
   "devDependencies": {
     "concurrently": "^9.1.2"

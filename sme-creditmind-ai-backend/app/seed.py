@@ -1,5 +1,6 @@
 """
-Seed the database with 8 realistic SME merchants and their POS transaction data.
+Seed the database with realistic SME merchants (including one [DEMO LUONG] workflow SME)
+and their POS transaction data.
 
 Each merchant has a distinct business profile that produces different credit scores
 when run through the scoring engine (from excellent to poor).
@@ -11,11 +12,28 @@ import random
 import uuid
 from datetime import datetime, timedelta
 
+from sqlalchemy.exc import OperationalError as SAOperationalError
+
+from app.bootstrap import (
+    DEMO_ADMIN_EMAIL,
+    DEMO_ADMIN_PASSWORD,
+    DEMO_ORGANIZATION_ID as ORG_DEMO_ID,
+    ensure_subscription_plans,
+)
+from app.core.security import hash_password
 from app.database import SessionLocal, create_tables, engine, Base
-from app.models.merchant import Merchant
-from app.models.transaction import Transaction
+from app.models.credit_score import CreditScore
 from app.models.alert import Alert
+from app.models.membership import Membership
+from app.models.merchant import Merchant
+from app.models.organization import Organization
+from app.models.subscription import OrgSubscription
+from app.models.transaction import Transaction
+from app.models.user import User
 from app.services.scoring_engine import run_assessment
+
+# Id cố định để gắn ?merchantId= trong UI và thử quy trình (upload / assess / merchant detail).
+WORKFLOW_DEMO_MERCHANT_ID = "m-demo-workflow"
 
 random.seed(42)
 
@@ -138,6 +156,21 @@ MERCHANTS = [
         "contact_phone": "0978901234",
         "contact_email": "son@gymfitpro.vn",
         "months_active": 16,
+        "profile": "good",
+    },
+    {
+        "id": WORKFLOW_DEMO_MERCHANT_ID,
+        "name": "[DEMO LUONG] Cafe Thu Nghiem Quy Trinh",
+        "category": "F&B / Cafe",
+        "sub_category": "Coffee Shop",
+        "address": "10 Ly Tu Trong, Phuong Ben Nghe",
+        "district": "Quan 1",
+        "city": "Ho Chi Minh City",
+        "pos_provider": "VNPay",
+        "contact_name": "Tran Thu Nghiem",
+        "contact_phone": "0987654321",
+        "contact_email": "demo.workflow@creditmind.local",
+        "months_active": 10,
         "profile": "good",
     },
 ]
@@ -323,7 +356,90 @@ def _create_alerts(db_session) -> None:
     db_session.commit()
 
 
+def _print_workflow_demo_hints() -> None:
+    mid = WORKFLOW_DEMO_MERCHANT_ID
+    print("\n--- Workflow demo SME ---")
+    print(f"  Search name:       [DEMO LUONG]  (id: {mid})")
+    print(f"  Merchant detail:   /merchants/{mid}")
+    print(f"  POS file upload:   /transaction-upload?merchantId={mid}")
+    print(f"  New Assessment:    /assess?merchantId={mid}")
+    print(f"  Sample CSV (extra): sme-creditmind-ai-backend/samples/workflow-demo-upload.csv\n")
+
+
+def ensure_workflow_demo_merchant() -> None:
+    """
+    Them SME [DEMO LUONG] + giao dich + cham diem vao DB hien tai (KHONG xoa bang).
+    Can to chuc org-demo (chay `python app/seed.py` mot lan truoc day tren may ban).
+    """
+    db = SessionLocal()
+    try:
+        try:
+            existing = db.get(Merchant, WORKFLOW_DEMO_MERCHANT_ID)
+        except SAOperationalError:
+            print(
+                "ERROR: SQLite schema does not match this backend (missing column/table).\n"
+                "  Run full reset seed:\n"
+                "    cd sme-creditmind-ai-backend\n"
+                "    .venv\\Scripts\\python.exe app\\seed.py"
+            )
+            return
+
+        if existing:
+            print(f"[OK] Merchant '{WORKFLOW_DEMO_MERCHANT_ID}' already exists (skipped).")
+            _print_workflow_demo_hints()
+            return
+
+        org = db.get(Organization, ORG_DEMO_ID)
+        if not org:
+            print(
+                "ERROR: org-demo not found. Run full seed first:\n"
+                "  cd sme-creditmind-ai-backend && .venv\\Scripts\\python.exe app\\seed.py"
+            )
+            return
+
+        tmpl = next((m for m in MERCHANTS if m["id"] == WORKFLOW_DEMO_MERCHANT_ID), None)
+        if not tmpl:
+            print("ERROR: MERCHANTS list missing WORKFLOW_DEMO_MERCHANT_ID entry.")
+            return
+
+        profile = tmpl["profile"]
+        mdata = {k: v for k, v in tmpl.items() if k != "profile"}
+        merchant = Merchant(
+            organization_id=ORG_DEMO_ID,
+            status="ACTIVE",
+            created_at=NOW - timedelta(days=mdata["months_active"] * 30),
+            updated_at=NOW,
+            **mdata,
+        )
+        db.add(merchant)
+        db.commit()
+
+        print(f"  [{merchant.id}] {merchant.name} — generating transactions ({profile})...")
+        txns = _generate_transactions(merchant.id, merchant.months_active, profile)
+        batch_size = 5000
+        for i in range(0, len(txns), batch_size):
+            batch = txns[i : i + batch_size]
+            db.bulk_save_objects(batch)
+            db.commit()
+        print(f"    -> {len(txns)} transactions created")
+
+        print("    -> Running credit assessment...")
+        score = run_assessment(db, merchant.id)
+        print(f"    -> Score: {score.score} | Grade: {score.grade} | Recommendation: {score.recommendation}")
+
+        _create_alerts(db)
+        print("\n[OK] Workflow demo merchant added. Next steps:")
+        _print_workflow_demo_hints()
+    finally:
+        db.close()
+
+
 def seed():
+    print("=" * 72)
+    print("WARNING: Full seed DROPS ALL TABLES — every user/account you created will be deleted.")
+    print("         For day-to-day work, rely on the demo admin created on backend startup instead.")
+    print("         Only run this when you need fresh merchant/transaction sample data.")
+    print("=" * 72)
     print("Dropping existing tables...")
     Base.metadata.drop_all(bind=engine)
 
@@ -332,11 +448,45 @@ def seed():
 
     db = SessionLocal()
     try:
+        ensure_subscription_plans(db)
+
+        org = Organization(
+            id=ORG_DEMO_ID,
+            name="Demo Bank (seed)",
+            slug="demo-bank",
+        )
+        db.add(org)
+        demo_user = User(
+            id="usr-demo-admin",
+            email=DEMO_ADMIN_EMAIL,
+            hashed_password=hash_password(DEMO_ADMIN_PASSWORD),
+            full_name="Demo Loan Officer",
+        )
+        db.add(demo_user)
+        db.add(
+            Membership(
+                user_id=demo_user.id,
+                organization_id=ORG_DEMO_ID,
+                role="ORG_ADMIN",
+            )
+        )
+        db.add(
+            OrgSubscription(
+                organization_id=ORG_DEMO_ID,
+                plan_id="plan-enterprise",
+            )
+        )
+        db.commit()
+
+        print(f"Demo login: {DEMO_ADMIN_EMAIL} / {DEMO_ADMIN_PASSWORD}")
+        print(f"Use header X-Organization-Id: {ORG_DEMO_ID}")
         print(f"Seeding {len(MERCHANTS)} merchants with realistic transaction data...")
 
-        for mdata in MERCHANTS:
-            profile = mdata.pop("profile")
+        for tmpl in MERCHANTS:
+            profile = tmpl["profile"]
+            mdata = {k: v for k, v in tmpl.items() if k != "profile"}
             merchant = Merchant(
+                organization_id=ORG_DEMO_ID,
                 status="ACTIVE",
                 created_at=NOW - timedelta(days=mdata["months_active"] * 30),
                 updated_at=NOW,
@@ -371,11 +521,11 @@ def seed():
         print(f"  Transactions: {total_txns:,}")
         print(f"  Assessments:  {total_scores}")
         print(f"  Alerts:       {total_alerts}")
+        _print_workflow_demo_hints()
 
     finally:
         db.close()
 
 
 if __name__ == "__main__":
-    from app.models.credit_score import CreditScore
     seed()

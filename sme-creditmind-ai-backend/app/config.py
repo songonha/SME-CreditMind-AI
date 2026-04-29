@@ -18,6 +18,8 @@ class Settings(BaseSettings):
     APP_NAME: str = "CreditMind AI Backend"
     DATABASE_URL: str = _default_sqlite_url()
     CORS_ORIGINS: List[str] = ["http://localhost:3000", "http://127.0.0.1:3000"]
+    # Set false in production when only explicit CORS_ORIGINS should be used (no localhost regex).
+    CORS_ALLOW_LOCAL_REGEX: bool = True
     QWEN_API_KEY: str = ""
     QWEN_BASE_URL: str = "https://dashscope-intl.aliyuncs.com/compatible-mode/v1"
     # Vision: native VL + OCR for POS / bills / statements (Singapore Model Studio snapshot ids).
@@ -31,6 +33,22 @@ class Settings(BaseSettings):
     OPENAI_PROJECT: str = ""
     # Per HTTP call to DashScope; vision + JSON steps can exceed 35s.
     LLM_TIMEOUT_SECONDS: float = 90.0
+
+    # Auth (bank-ready)
+    JWT_SECRET_KEY: str = "change-me-in-production-use-openssl-rand-hex-32"
+    JWT_ALGORITHM: str = "HS256"
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24
+    REFRESH_TOKEN_EXPIRE_DAYS: int = 7
+
+    # Password reset (optional SMTP; without SMTP only structured logging in dev)
+    PASSWORD_RESET_TOKEN_TTL_MINUTES: int = 60
+    PUBLIC_APP_URL: str = "http://127.0.0.1:3000"
+    SMTP_HOST: str = ""
+    SMTP_PORT: int = 587
+    SMTP_USER: str = ""
+    SMTP_PASSWORD: str = ""
+    SMTP_USE_TLS: bool = True
+    FROM_EMAIL: str = ""
 
     @field_validator("DATABASE_URL", mode="before")
     @classmethod

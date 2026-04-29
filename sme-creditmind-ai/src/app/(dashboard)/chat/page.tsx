@@ -138,7 +138,7 @@ export default function ChatPage() {
                   onClick={() => setSelectedMerchant(m.id)}
                   className={`w-full text-left rounded-lg p-3 transition-colors ${
                     selectedMerchant === m.id
-                      ? "bg-[#0046FF]/10 border border-[#0046FF]/20"
+                      ? "bg-primary/10 border border-primary/20"
                       : "hover:bg-muted border border-transparent"
                   }`}
                 >
@@ -174,8 +174,8 @@ export default function ChatPage() {
         <CardHeader className="pb-3 border-b">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#0046FF]/10">
-                <Bot className="h-5 w-5 text-[#0046FF]" />
+              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10">
+                <Bot className="h-5 w-5 text-primary" />
               </div>
               <div>
                 <CardTitle className="text-base">CreditMind AI Co-Pilot</CardTitle>
@@ -205,7 +205,7 @@ export default function ChatPage() {
                 <AvatarFallback
                   className={
                     msg.role === "assistant"
-                      ? "bg-[#0046FF] text-white"
+                      ? "bg-primary text-primary-foreground"
                       : "bg-muted"
                   }
                 >
@@ -219,7 +219,7 @@ export default function ChatPage() {
               <div
                 className={`max-w-[75%] rounded-2xl px-4 py-3 ${
                   msg.role === "user"
-                    ? "bg-[#0046FF] text-white"
+                    ? "bg-primary text-primary-foreground"
                     : "bg-muted"
                 }`}
               >
@@ -238,7 +238,7 @@ export default function ChatPage() {
           {isTyping && (
             <div className="flex gap-3">
               <Avatar className="h-8 w-8 shrink-0">
-                <AvatarFallback className="bg-[#0046FF] text-white">
+                <AvatarFallback className="bg-primary text-primary-foreground">
                   <Sparkles className="h-4 w-4" />
                 </AvatarFallback>
               </Avatar>
@@ -290,7 +290,7 @@ export default function ChatPage() {
               type="submit"
               size="icon"
               disabled={!input.trim() || isTyping}
-              className="bg-[#0046FF] hover:bg-[#0035CC] shrink-0"
+              className="shrink-0"
             >
               <Send className="h-4 w-4" />
             </Button>

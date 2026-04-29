@@ -10,7 +10,10 @@ from sqlalchemy import desc
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.deps.auth import OrgContext, get_current_user, get_org_context
 from app.models.merchant import Merchant
+from app.models.user import User
+from app.services.entitlements import assert_ai_quota, record_ai_usage
 from app.models.credit_score import CreditScore, CreditFactor
 from app.models.transaction import MonthlyAggregate
 from app.services.pos_orchestrator import assess_pos_capture, get_provider_runtime_config, get_provider_health
@@ -97,19 +100,23 @@ class ProviderHealthResponse(BaseModel):
 
 
 @router.get("/providers/config", response_model=ProviderRuntimeConfigResponse)
-def ai_provider_config():
+def ai_provider_config(_user: User = Depends(get_current_user)):
     payload = get_provider_runtime_config()
     return ProviderRuntimeConfigResponse(providers=[ProviderRuntimeConfig(**item) for item in payload])
 
 
 @router.get("/providers/health", response_model=ProviderHealthResponse)
-def ai_provider_health():
+def ai_provider_health(_user: User = Depends(get_current_user)):
     payload = get_provider_health()
     return ProviderHealthResponse(providers=[ProviderHealthItem(**item) for item in payload])
 
 
 @router.post("/chat", response_model=ChatResponse)
-def ai_chat(body: ChatRequest, db: Session = Depends(get_db)):
+def ai_chat(
+    body: ChatRequest,
+    ctx: OrgContext = Depends(get_org_context),
+    db: Session = Depends(get_db),
+):
     lower = body.message.lower()
 
     merchant: Optional[Merchant] = None
@@ -118,7 +125,14 @@ def ai_chat(body: ChatRequest, db: Session = Depends(get_db)):
     aggregates: List[MonthlyAggregate] = []
 
     if body.merchantId:
-        merchant = db.query(Merchant).filter(Merchant.id == body.merchantId).first()
+        merchant = (
+            db.query(Merchant)
+            .filter(
+                Merchant.id == body.merchantId,
+                Merchant.organization_id == ctx.organization_id,
+            )
+            .first()
+        )
         score = (
             db.query(CreditScore)
             .filter(CreditScore.merchant_id == body.merchantId)
@@ -145,7 +159,7 @@ def ai_chat(body: ChatRequest, db: Session = Depends(get_db)):
     elif "what-if" in lower or "scenario" in lower or "20%" in lower:
         response = _whatif_scenario(merchant, score, aggregates)
     elif "compare" in lower or "benchmark" in lower:
-        response = _benchmark_compare(merchant, score, db)
+        response = _benchmark_compare(merchant, score, db, ctx.organization_id)
     else:
         response = _default_response(merchant, score)
 
@@ -153,7 +167,12 @@ def ai_chat(body: ChatRequest, db: Session = Depends(get_db)):
 
 
 @router.post("/pos-assessment", response_model=PosAssessmentResult)
-def run_pos_assessment(body: PosAssessmentRequest):
+def run_pos_assessment(
+    body: PosAssessmentRequest,
+    ctx: OrgContext = Depends(get_org_context),
+    db: Session = Depends(get_db),
+):
+    assert_ai_quota(db, ctx.organization_id)
     try:
         payload = assess_pos_capture(
             capture_id=body.captureId,
@@ -161,14 +180,31 @@ def run_pos_assessment(body: PosAssessmentRequest):
             mime_type=body.mimeType,
             base64_data=body.base64Data,
         )
+        record_ai_usage(
+            db,
+            organization_id=ctx.organization_id,
+            user_id=ctx.user.id,
+            event_type="pos_assessment",
+        )
         return PosAssessmentResult(**payload)
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=503, detail=f"POS AI assessment failed: {exc}") from exc
 
 
 @router.post("/pos-assessment/save", response_model=SavePosAssessmentResponse)
-def save_pos_assessment(body: SavePosAssessmentRequest, db: Session = Depends(get_db)):
-    merchant = db.query(Merchant).filter(Merchant.id == body.merchantId).first()
+def save_pos_assessment(
+    body: SavePosAssessmentRequest,
+    ctx: OrgContext = Depends(get_org_context),
+    db: Session = Depends(get_db),
+):
+    merchant = (
+        db.query(Merchant)
+        .filter(
+            Merchant.id == body.merchantId,
+            Merchant.organization_id == ctx.organization_id,
+        )
+        .first()
+    )
     if not merchant:
         raise HTTPException(status_code=404, detail="Merchant not found")
 
@@ -325,11 +361,17 @@ def _benchmark_compare(
     merchant: Optional[Merchant],
     score: Optional[CreditScore],
     db: Session,
+    organization_id: str,
 ) -> str:
     if not score or not merchant:
         return "Please select a merchant first to compare against benchmarks."
 
-    all_scores = db.query(CreditScore.score).all()
+    all_scores = (
+        db.query(CreditScore.score)
+        .join(Merchant, Merchant.id == CreditScore.merchant_id)
+        .filter(Merchant.organization_id == organization_id)
+        .all()
+    )
     scores = [s[0] for s in all_scores]
     avg = sum(scores) / len(scores) if scores else 0
     rank = sum(1 for s in scores if s <= score.score)

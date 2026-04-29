@@ -4,12 +4,14 @@ import uuid
 from datetime import datetime
 from typing import Optional, List
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy import desc
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.deps.auth import OrgContext, get_org_context
 from app.models.merchant import Merchant
+from app.services.audit_service import write_audit
 from app.models.credit_score import CreditScore, CreditFactor
 from app.models.transaction import MonthlyAggregate
 from app.schemas.merchant import (
@@ -68,11 +70,16 @@ def _get_latest_score(db: Session, merchant_id: str) -> Optional[CreditScore]:
 
 @router.get("", response_model=MerchantListResponse)
 def list_merchants(
+    ctx: OrgContext = Depends(get_org_context),
     search: Optional[str] = Query(None),
     grade: Optional[str] = Query(None),
     db: Session = Depends(get_db),
 ):
-    query = db.query(Merchant).order_by(desc(Merchant.updated_at))
+    query = (
+        db.query(Merchant)
+        .filter(Merchant.organization_id == ctx.organization_id)
+        .order_by(desc(Merchant.updated_at))
+    )
     merchants = query.all()
 
     results: List[MerchantOut] = []
@@ -93,8 +100,19 @@ def list_merchants(
 
 
 @router.get("/{merchant_id}")
-def get_merchant(merchant_id: str, db: Session = Depends(get_db)):
-    m = db.query(Merchant).filter(Merchant.id == merchant_id).first()
+def get_merchant(
+    merchant_id: str,
+    ctx: OrgContext = Depends(get_org_context),
+    db: Session = Depends(get_db),
+):
+    m = (
+        db.query(Merchant)
+        .filter(
+            Merchant.id == merchant_id,
+            Merchant.organization_id == ctx.organization_id,
+        )
+        .first()
+    )
     if not m:
         raise HTTPException(status_code=404, detail="Merchant not found")
 
@@ -160,9 +178,15 @@ def get_merchant(merchant_id: str, db: Session = Depends(get_db)):
 
 
 @router.post("", response_model=MerchantOut, status_code=201)
-def create_merchant(body: MerchantCreate, db: Session = Depends(get_db)):
+def create_merchant(
+    body: MerchantCreate,
+    request: Request,
+    ctx: OrgContext = Depends(get_org_context),
+    db: Session = Depends(get_db),
+):
     m = Merchant(
         id=f"m-{uuid.uuid4().hex[:8]}",
+        organization_id=ctx.organization_id,
         name=body.name,
         business_reg_no=body.businessRegNo,
         tax_id=body.taxId,
@@ -183,4 +207,14 @@ def create_merchant(body: MerchantCreate, db: Session = Depends(get_db)):
     db.add(m)
     db.commit()
     db.refresh(m)
+    write_audit(
+        db,
+        action="merchant.create",
+        organization_id=ctx.organization_id,
+        user_id=ctx.user.id,
+        entity_type="merchant",
+        entity_id=m.id,
+        detail={"name": m.name},
+        ip_address=request.client.host if request.client else None,
+    )
     return _to_merchant_out(m)

@@ -21,11 +21,11 @@ export function RecommendationBadge({ recommendation }: { recommendation: string
 
 export function ScoreDisplay({ score, size = "md" }: { score: number; size?: "sm" | "md" | "lg" }) {
   const getColor = () => {
-    if (score >= 800) return "text-emerald-600";
-    if (score >= 650) return "text-blue-600";
-    if (score >= 500) return "text-amber-600";
-    if (score >= 350) return "text-orange-600";
-    return "text-red-600";
+    if (score >= 800) return "text-emerald-800";
+    if (score >= 650) return "text-sky-800";
+    if (score >= 500) return "text-amber-800";
+    if (score >= 350) return "text-orange-800";
+    return "text-red-800";
   };
 
   const sizeClasses = {

@@ -28,6 +28,7 @@ type ProviderHealthItem = {
 
 type ProviderConfigResponse = { providers: ProviderRuntimeConfig[] };
 type ProviderHealthResponse = { providers: ProviderHealthItem[] };
+type ChangePasswordResponse = { message: string };
 
 export default function SettingsPage() {
   const [providers, setProviders] = useState<ProviderRuntimeConfig[]>([]);
@@ -36,6 +37,12 @@ export default function SettingsPage() {
   const [loadingHealth, setLoadingHealth] = useState(false);
   const [infoMessage, setInfoMessage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmNewPassword, setConfirmNewPassword] = useState("");
+  const [passwordLoading, setPasswordLoading] = useState(false);
+  const [passwordInfo, setPasswordInfo] = useState<string | null>(null);
+  const [passwordError, setPasswordError] = useState<string | null>(null);
 
   const loadProviderConfig = async () => {
     setLoadingConfig(true);
@@ -73,6 +80,38 @@ export default function SettingsPage() {
     loadProviderHealth();
   }, []);
 
+  const submitChangePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setPasswordInfo(null);
+    setPasswordError(null);
+    if (newPassword !== confirmNewPassword) {
+      setPasswordError("New passwords do not match.");
+      return;
+    }
+    if (newPassword.length < 8) {
+      setPasswordError("New password must be at least 8 characters.");
+      return;
+    }
+    setPasswordLoading(true);
+    try {
+      const res = await apiFetch<ChangePasswordResponse>("/api/auth/change-password", {
+        method: "POST",
+        body: JSON.stringify({
+          current_password: currentPassword,
+          new_password: newPassword,
+        }),
+      });
+      setPasswordInfo(res.message);
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmNewPassword("");
+    } catch (err) {
+      setPasswordError(isApiError(err) ? err.message : "Could not update password.");
+    } finally {
+      setPasswordLoading(false);
+    }
+  };
+
   return (
     <div className="space-y-6 max-w-3xl">
       <div>
@@ -81,6 +120,62 @@ export default function SettingsPage() {
           Configure integrations and inspect backend AI runtime health.
         </p>
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Change password</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={submitChangePassword} className="space-y-4 max-w-md">
+            <div className="space-y-2">
+              <label htmlFor="settings-current-pw" className="text-sm font-medium">
+                Current password
+              </label>
+              <Input
+                id="settings-current-pw"
+                type="password"
+                autoComplete="current-password"
+                value={currentPassword}
+                onChange={(e) => setCurrentPassword(e.target.value)}
+                required
+              />
+            </div>
+            <div className="space-y-2">
+              <label htmlFor="settings-new-pw" className="text-sm font-medium">
+                New password
+              </label>
+              <Input
+                id="settings-new-pw"
+                type="password"
+                autoComplete="new-password"
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                required
+                minLength={8}
+              />
+            </div>
+            <div className="space-y-2">
+              <label htmlFor="settings-confirm-pw" className="text-sm font-medium">
+                Confirm new password
+              </label>
+              <Input
+                id="settings-confirm-pw"
+                type="password"
+                autoComplete="new-password"
+                value={confirmNewPassword}
+                onChange={(e) => setConfirmNewPassword(e.target.value)}
+                required
+                minLength={8}
+              />
+            </div>
+            {passwordInfo ? <p className="text-sm text-emerald-600">{passwordInfo}</p> : null}
+            {passwordError ? <p className="text-sm text-destructive">{passwordError}</p> : null}
+            <Button type="submit" size="sm" disabled={passwordLoading}>
+              {passwordLoading ? "Updating…" : "Update password"}
+            </Button>
+          </form>
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>
